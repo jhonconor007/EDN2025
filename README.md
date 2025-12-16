@@ -1,67 +1,233 @@
-# EDDSG1-2025
-🛫 Gestión de Pasajeros en C Programa en C que administra la venta de tiquetes y el abordaje de pasajeros usando listas enlazadas. Permite establecer capacidad, sobreventa del 10%, y mostrar quién abordó o no.
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
-✈️ Gestión de Memoria Dinámica y Listas Enlazadas
-Sistema de Tiquetes de Avión
+typedef struct pedido { /* cola fifo */
+    char destino[30];
+    int cantidad;
+    struct pedido *siguiente;
+} pedido;
 
-Este proyecto implementa un simulador de gestión de venta de tiquetes y abordaje de un avión en lenguaje C, aplicando los conceptos de memoria dinámica y listas enlazadas vistos en clase.
+typedef struct nodoavl { /* arbol avl */
+    int fecha;
+    char producto[30];
+    int stock;
+    int altura;
 
-🧠 Objetivo del Taller
+    pedido *cola; /* cola de pedidos asociada a cada lote */
 
-Aplicar el manejo de memoria dinámica mediante la creación, recorrido y liberación de una lista enlazada simple que almacena los pasajeros de un vuelo, controlando la venta de tiquetes y el abordaje del avión.
+    struct nodoavl *izquierda;
+    struct nodoavl *derecha;
+} nodoavl;
 
-🚀 1. Requisitos del Programa
-✈️ Capacidad y Sobreventa
+int altura(nodoavl *n){
+    if (n == NULL) return 0;
+    return n->altura;
+}
 
-El programa solicita al inicio la capacidad máxima del avión.
+int max(int a, int b){
+    return (a > b) ? a : b;
+}
 
-Se permite la venta de hasta un 10 % adicional de tiquetes (sobreventa).
+/* |
+   |
+   v
+   esta funcion sirve para liberar toda la memoria de una cola */
 
-👤 Datos del Pasajero
+void liberarcola(pedido *p){
+    while (p != NULL){
+        pedido *alm = p; /*variable auxiliar */
+        p = p->siguiente;
+        free(alm);
+    }
+}
 
-Cada pasajero almacena:
+nodoavl *nuevonodo(int fecha, char producto[], int stock){
+    nodoavl *n = (nodoavl *)malloc(sizeof(nodoavl));
+    if (n == NULL){
+        perror("error al asignar memoria");
+        exit(EXIT_FAILURE);
+    }
 
-Primer apellido
+    n->fecha = fecha;
+    /* se prioriza la fecha de vencimiento
+       izquierda = fechas mas antiguas */
+    strcpy(n->producto, producto);
+    n->stock = stock;
+    n->cola = NULL;
+    n->altura = 1;
+    n->izquierda = NULL;
+    n->derecha = NULL;
 
-Género: Femenino / Masculino / No Binario
+    return n;
+}
 
-🪪 Proceso de Abordaje
+nodoavl *rotarderecha(nodoavl *y){
+    nodoavl *x = y->izquierda;
+    nodoavl *t2 = x->derecha;
 
-Los pasajeros abordan en orden de compra.
+    /* rotacion */
+    x->derecha = y;
+    y->izquierda = t2;
 
-El abordaje se detiene al alcanzar la capacidad máxima (sin incluir la sobreventa).
+    /* actualizar alturas */
+    y->altura = max(altura(y->izquierda), altura(y->derecha)) + 1;
+    x->altura = max(altura(x->izquierda), altura(x->derecha)) + 1;
 
-Una vez iniciado el abordaje, no se pueden vender más tiquetes.
+    return x;
+}
 
-🧭 2. Funcionalidades del Menú
-Opción	Descripción
-1. Establecer Capacidad	Define la capacidad del avión (solo una vez).
-2. Vender Tiquete	Registra un nuevo pasajero, si no se supera la sobreventa y el abordaje no ha comenzado.
-3. Iniciar Abordaje	Marca como abordados a los primeros pasajeros hasta llenar la capacidad.
-4. Ver Abordados	Muestra los pasajeros que subieron al avión.
-5. Ver No Abordados	Muestra los pasajeros con tiquete que no pudieron abordar.
-6. Salir	Finaliza el programa y libera la memoria usada.
-💾 3. Gestión de Memoria
+nodoavl *rotarizquierda(nodoavl *x){
+    nodoavl *y = x->derecha;
+    nodoavl *t2 = y->izquierda;
 
-Se utilizan estructuras dinámicas (malloc, free) para manejar la lista enlazada de pasajeros.
+    /* rotacion */
+    y->izquierda = x;
+    x->derecha = t2;
 
-Al salir, el programa libera toda la memoria asignada dinámicamente.
+    /* actualizar alturas */
+    x->altura = max(altura(x->izquierda), altura(x->derecha)) + 1;
+    y->altura = max(altura(y->izquierda), altura(y->derecha)) + 1;
+
+    return y;
+}
+
+/* funcion que calcula el balance del arbol */
+int balance(nodoavl *n){
+    if (n == NULL) return 0;
+    return altura(n->izquierda) - altura(n->derecha);
+}
+
+/* |
+   |
+   v
+   aqui va el recibimiento de la mercancia */
+
+nodoavl *insertaravl(nodoavl *raiz, int fecha, char producto[], int stock){
+    if (raiz == NULL)
+        return nuevonodo(fecha, producto, stock);
+
+    if (fecha < raiz->fecha)
+        raiz->izquierda = insertaravl(raiz->izquierda, fecha, producto, stock);
+    else if (fecha > raiz->fecha)
+        raiz->derecha = insertaravl(raiz->derecha, fecha, producto, stock);
+    else{
+        printf("⚠ la fecha %d ya existe\n", fecha);
+        return raiz;
+    }
+
+    raiz->altura = 1 + max(altura(raiz->izquierda), altura(raiz->derecha));
+    int b = balance(raiz);
+
+    /* balanceo del arbol */
+    if (b > 1 && fecha < raiz->izquierda->fecha)
+        return rotarderecha(raiz);
+
+    if (b < -1 && fecha > raiz->derecha->fecha)
+        return rotarizquierda(raiz);
+
+    return raiz;
+}
+
+/* cola fifo de pedidos de despacho */
+
+void encolarpedido(nodoavl *nodo){
+    pedido *nuevo = (pedido *)malloc(sizeof(pedido));
+    if (nuevo == NULL){
+        perror("error de memoria");
+        return;
+    }
+
+    /* limpiar buffer de entrada */
+    int c;
+    while ((c = getchar()) != '\n' && c != EOF);
+
+    printf("Destino: ");
+    scanf(" %s", nuevo->destino);
+
+    printf("Cantidad solicitada: ");
+    scanf("%d", &nuevo->cantidad);
+
+    if (nodo == NULL || nuevo->cantidad <= 0 || nuevo->cantidad > nodo->stock){
+        printf("Cantidad invalida o stock insuficiente\n");
+        free(nuevo);
+        return;
+    }
+
+    /* descuento de stock y agregado FIFO */
+    nodo->stock -= nuevo->cantidad;
+    nuevo->siguiente = NULL;
+
+    if (nodo->cola == NULL){
+        nodo->cola = nuevo;
+    } else{
+        pedido *aux = nodo->cola;
+        while (aux->siguiente != NULL){
+            aux = aux->siguiente;
+        }
+        aux->siguiente = nuevo;
+    }
+
+    printf("✅ Pedido registrado. Stock restante: %d\n", nodo->stock);
+}
 
 
 
+/* funcion simple para buscar un lote por fecha */
+nodoavl *buscar(nodoavl *raiz, int fecha){
+    if (raiz == NULL || raiz->fecha == fecha)
+        return raiz;
+    if (fecha < raiz->fecha)
+        return buscar(raiz->izquierda, fecha);
+    return buscar(raiz->derecha, fecha);
+}
 
-==================================================
-typedef struct Pasajero {
-    char apellido[30];
-    char genero[15];
-    int abordado; // 0: No abordado, 1: Abordado
-    struct Pasajero *next;
-} Pasajero;
+/* ===================== MAIN Y MENU ===================== */
 
-==================================================
-Cada nodo representa un pasajero y se enlaza al siguiente mediante el puntero next.
-==================================================
+int main(){
 
-INTEGRANTES : jhon freddy ballesteros lozano y Ana faisury García anizares
+    nodoavl *raiz = NULL;
+    int opcion;
 
+    do{
+        printf(" SISTEMA LOGISTICO ");
+        printf("1. Recibir mercancia (insertar lote)\n");
+        printf("2. Registrar pedido de despacho\n");
+        printf("3. Salir\n");
+        printf("Seleccione una opcion: ");
+        scanf("%d" , &opcion);
 
+        if (opcion == 1){
+            int fecha, stock;
+            char producto[30];
+
+            printf("Fecha de vencimiento: ");
+            scanf("%d", &fecha);
+            printf("Producto: ");
+            scanf("%s", producto);
+            printf("Stock: ");
+            scanf("%d", &stock);
+
+            raiz = insertaravl(raiz, fecha, producto, stock);
+        
+            printf("✅ Lote registrado correctamente\n");
+        }
+
+        else if (opcion == 2){
+            int fecha;
+            printf("Ingrese la fecha del lote: ");
+            scanf("%d", &fecha);
+
+            nodoavl *lote = buscar(raiz, fecha);
+            if (lote == NULL){
+                printf("❌ No existe un lote con esa fecha\n");
+            } else{
+                encolarpedido(lote);
+            }
+        }
+
+    } while (opcion != 3);
+
+    printf("Programa finalizado.\n");
+    return 0;
+}
